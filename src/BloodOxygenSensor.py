@@ -1,32 +1,33 @@
 from __future__ import print_function
+from __future__ import division
 import qwiic_max3010x
 import time
 import sys
 import RPi.GPIO as GPIO
+from twilio.rest import Client
 
 GPIO.setmode(GPIO.BCM)
 
-RED = 25
-GREEN = 24
-BLUE = 23
+led = 26
 
-GPIO.setup(RED, GPIO.OUT)
-GPIO.setup(GREEN, GPIO.OUT)
-GPIO.setup(BLUE, GPIO.OUT)
+GPIO.setup(led, GPIO.OUT)
+
+
+def sendMessage(msg):
+    # Find your Account SID and Auth Token at twilio.com/console
+    # and set the environment variables. See http://twil.io/secure
+    account_sid = 'AC3514b8529ae6590623639fdcf6443779'
+    auth_token = '486d31b84480487cea5e52e6c92dd476'
+    client = Client(account_sid, auth_token)
+
+    message = client.messages.create(body=msg, from_='+12248084210', to='+61423644084')
 
 
 def millis():
     return int(round(time.time() * 1000))
 
 
-def LEDs(red, green, blue):
-    GPIO.output(RED, red)
-    GPIO.output(GREEN, green)
-    GPIO.output(BLUE, blue)
-
-
-def runExample():
-    print("\nSparkFun MAX3010x Photodetector - Example 5\n")
+def Main():
     sensor = qwiic_max3010x.QwiicMax3010x()
 
     if sensor.begin() == False:
@@ -58,8 +59,11 @@ def runExample():
     startTime = millis()  # Used to calculate measurement rate
 
     while True:
-        sp02value = sensor.getIR() / (sensor.getIR() + sensor.getRed())
-        irValue = sensor.getIR()
+        redValue = int(sensor.getRed())
+        irValue = int(sensor.getIR())
+        add = redValue + irValue
+        sp02value = int(irValue / (redValue + irValue) * 100)
+
         samplesTaken += 1
         if sensor.checkForBeat(irValue) == True:
             # We sensed a beat!
@@ -84,32 +88,26 @@ def runExample():
 
         Hz = round(float(samplesTaken) / ((millis() - startTime) / 1000.0), 2)
         if (samplesTaken % 200) == 0:
+            GPIO.output(led, 0)
             print(
                 'IR=', irValue, ' \t',
+                'Red=', redValue, ' \t',
                 'BPM=', beatsPerMinute, '\t',
                 # 'DCE', getDCE() , '\t',\
                 'Avg=', beatAvg, '\t',
                 'Hz=', Hz,
                 'SP02=', sp02value
             )
-            if 20 < beatsPerMinute < 70:
-                LEDs(0, 0, 0)  # turn off LED
-                LEDs(0, 1, 0)  # make Led Green
-
-            elif 70 <= beatsPerMinute <= 80:
-                LEDs(0, 0, 0)
-                LEDs(1, 1, 0)
-
-            elif beatsPerMinute > 80:
-                LEDs(0, 0, 0)
-                LEDs(1, 0, 0)
-            else:
-                LEDs(0, 0, 0)
+            if 60 > beatsPerMinute > 100:  # if heart rate is at a unsafe level
+                GPIO.output(led, 1)  # turn on LED
+                sendMessage("Heartbeat in unsafe range")
+                time.sleep(3)
+                GPIO.output(led, 0)  # turn off LED
 
 
 if __name__ == '__main__':
     try:
-        runExample()
+        Main()
     except (KeyboardInterrupt, SystemExit) as exErr:
-        print("\nEnding Example 5")
+        print("\nEnding")
         sys.exit(0)
